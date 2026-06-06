@@ -5,6 +5,12 @@ const SENSITIVE_LOCAL_STORAGE_KEYS = new Set([
   "tabs_manager_pro_sync_settings"
 ]);
 
+let selectiveAllTabs = [];
+let selectiveFilteredTabs = [];
+let selectiveSelectedIds = new Set();
+let selectiveMode = "all";
+let selectiveActiveWindowId = null;
+
 function setStatus(text) {
   document.getElementById("status").textContent = text;
 }
@@ -974,6 +980,344 @@ async function restorePermanentBackupJson() {
   }
 }
 
+
+function getHostname(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function getSelectiveTabId(tab, index = 0) {
+  if (typeof tab.id === "number") return "tab_" + tab.id;
+  return ["tab", tab.windowId || 0, tab.index || index, tab.url || ""].join("_");
+}
+
+function normalizeSearchText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function selectiveModeLabel(mode) {
+  const labels = {
+    all: "全部一般分頁",
+    youtube: "YouTube",
+    ai: "AI / ChatGPT / Gemini",
+    github: "GitHub",
+    currentWindow: "目前視窗",
+    pinned: "Pinned"
+  };
+  return labels[mode] || labels.all;
+}
+
+function isYoutubeTab(tab) {
+  const host = getHostname(tab.url || "");
+  return host.includes("youtube.com") || host.includes("youtu.be");
+}
+
+function isAiTab(tab) {
+  const text = normalizeSearchText((tab.title || "") + " " + (tab.url || ""));
+  return [
+    "chatgpt",
+    "openai.com",
+    "gemini.google.com",
+    "claude.ai",
+    "perplexity.ai",
+    "copilot.microsoft.com",
+    "poe.com"
+  ].some(token => text.includes(token));
+}
+
+function isGithubTab(tab) {
+  return getHostname(tab.url || "").includes("github.com");
+}
+
+function isSelectiveModeMatched(tab) {
+  if (!isNormalPageUrl(tab.url || "")) return false;
+
+  if (selectiveMode === "youtube") return isYoutubeTab(tab);
+  if (selectiveMode === "ai") return isAiTab(tab);
+  if (selectiveMode === "github") return isGithubTab(tab);
+  if (selectiveMode === "currentWindow") return selectiveActiveWindowId !== null && tab.windowId === selectiveActiveWindowId;
+  if (selectiveMode === "pinned") return Boolean(tab.pinned);
+
+  return true;
+}
+
+function getSelectiveFilterText() {
+  const input = document.getElementById("selectiveFilterInput");
+  return normalizeSearchText(input ? input.value : "");
+}
+
+function isSelectiveKeywordMatched(tab, keyword) {
+  if (!keyword) return true;
+  const text = normalizeSearchText([
+    tab.title || "",
+    tab.url || "",
+    getHostname(tab.url || "")
+  ].join(" "));
+  return text.includes(keyword);
+}
+
+function applySelectiveFilter() {
+  const keyword = getSelectiveFilterText();
+  selectiveFilteredTabs = selectiveAllTabs.filter(tab =>
+    isSelectiveModeMatched(tab) && isSelectiveKeywordMatched(tab, keyword)
+  );
+}
+
+function renderSelectiveTabs() {
+  const list = document.getElementById("selectiveTabList");
+  const summary = document.getElementById("selectiveSummary");
+  if (!list || !summary) return;
+
+  applySelectiveFilter();
+
+  const selectedVisibleCount = selectiveFilteredTabs.filter((tab, index) =>
+    selectiveSelectedIds.has(getSelectiveTabId(tab, index))
+  ).length;
+
+  summary.textContent = [
+    "模式：" + selectiveModeLabel(selectiveMode),
+    "目前一般分頁：" + selectiveAllTabs.length,
+    "符合篩選：" + selectiveFilteredTabs.length,
+    "已勾選：" + selectiveSelectedIds.size,
+    "本頁符合篩選且已勾選：" + selectedVisibleCount,
+    "提示：輸入 youtube.com、gemini、github、IOWN 等關鍵字後，可再按「勾選全部符合篩選」。"
+  ].join("\n");
+
+  if (!selectiveFilteredTabs.length) {
+    list.innerHTML = `<div class="selective-empty">沒有符合條件的分頁。可按「重新讀取目前分頁」或清除篩選。</div>`;
+    return;
+  }
+
+  list.innerHTML = selectiveFilteredTabs.map((tab, index) => {
+    const id = getSelectiveTabId(tab, index);
+    const checked = selectiveSelectedIds.has(id) ? "checked" : "";
+    const host = getHostname(tab.url || "") || "unknown";
+    const pinned = tab.pinned ? " · pinned" : "";
+    const active = tab.active ? " · active" : "";
+
+    return `
+      <label class="selective-item" title="${escapeAttribute(tab.title || tab.url || "")}">
+        <input type="checkbox" class="selective-tab-checkbox" data-tab-id="${escapeAttribute(id)}" ${checked} />
+        <div>
+          <div class="selective-title">${escapeHtml(tab.title || tab.url || "(無標題)")}</div>
+          <div class="selective-url">${escapeHtml(tab.url || "")}</div>
+          <div class="selective-meta">${escapeHtml(host)} · window ${escapeHtml(String(tab.windowId || "?"))}${pinned}${active}</div>
+        </div>
+      </label>
+    `;
+  }).join("");
+}
+
+function escapeAttribute(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+async function loadSelectiveTabs() {
+  const btn = document.getElementById("selectiveReloadBtn");
+
+  try {
+    if (btn) btn.disabled = true;
+    setStatus("正在讀取目前所有分頁，準備精準選取...");
+
+    const tabs = await getCurrentTabs();
+    const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    selectiveActiveWindowId = activeTabs && activeTabs[0] ? activeTabs[0].windowId : null;
+    selectiveAllTabs = tabs
+      .filter(tab => isNormalPageUrl(tab.url || ""))
+      .map((tab, index) => ({
+        ...tab,
+        index: typeof tab.index === "number" ? tab.index : index,
+        id: typeof tab.id === "number" ? tab.id : undefined
+      }));
+
+    renderSelectiveTabs();
+    setStatus("完成：已讀取 " + selectiveAllTabs.length + " 個一般分頁，可開始篩選與勾選。 ");
+  } catch (error) {
+    console.error(error);
+    setStatus("失敗：" + error.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function setSelectiveMode(mode) {
+  selectiveMode = mode || "all";
+  renderSelectiveTabs();
+}
+
+function clearSelectiveFilter() {
+  const input = document.getElementById("selectiveFilterInput");
+  if (input) input.value = "";
+  selectiveMode = "all";
+  renderSelectiveTabs();
+}
+
+function selectAllFilteredTabs() {
+  applySelectiveFilter();
+  selectiveFilteredTabs.forEach((tab, index) => {
+    selectiveSelectedIds.add(getSelectiveTabId(tab, index));
+  });
+  renderSelectiveTabs();
+  setStatus("已勾選所有符合篩選的分頁，共 " + selectiveFilteredTabs.length + " 筆。 ");
+}
+
+function clearSelectiveSelection() {
+  selectiveSelectedIds = new Set();
+  renderSelectiveTabs();
+  setStatus("已取消所有精準選取分頁。 ");
+}
+
+function handleSelectiveCheckboxChange(event) {
+  const target = event.target;
+  if (!target || !target.classList || !target.classList.contains("selective-tab-checkbox")) return;
+
+  const id = target.getAttribute("data-tab-id");
+  if (!id) return;
+
+  if (target.checked) {
+    selectiveSelectedIds.add(id);
+  } else {
+    selectiveSelectedIds.delete(id);
+  }
+
+  renderSelectiveTabs();
+}
+
+function getSelectedSelectiveTabs() {
+  if (!selectiveAllTabs.length) {
+    throw new Error("請先按「重新讀取目前分頁」");
+  }
+
+  const selected = selectiveAllTabs.filter((tab, index) =>
+    selectiveSelectedIds.has(getSelectiveTabId(tab, index))
+  );
+
+  if (!selected.length) {
+    throw new Error("請先勾選要匯出或合併的分頁");
+  }
+
+  return selected;
+}
+
+function shouldCloseSelectedAfterAction() {
+  const input = document.getElementById("selectiveCloseAfterAction");
+  return Boolean(input && input.checked);
+}
+
+async function closeSelectiveTabsAfterAction(selectedTabs) {
+  if (!shouldCloseSelectedAfterAction()) {
+    return 0;
+  }
+
+  const ids = (selectedTabs || [])
+    .map(tab => tab.id)
+    .filter(id => typeof id === "number");
+
+  if (!ids.length) {
+    return 0;
+  }
+
+  await chrome.tabs.remove(ids);
+
+  const closedIds = new Set(ids);
+  selectiveAllTabs = selectiveAllTabs.filter(tab => !closedIds.has(tab.id));
+  selectiveSelectedIds = new Set();
+  renderSelectiveTabs();
+
+  try {
+    await refreshAutoBackupSummary();
+  } catch {
+    // The background auto backup will also update via tab_removed events.
+  }
+
+  return ids.length;
+}
+
+async function exportSelectiveTabsHtml() {
+  const btn = document.getElementById("selectiveExportBtn");
+
+  try {
+    btn.disabled = true;
+    setStatus("正在匯出勾選分頁 HTML...");
+
+    const selectedTabs = getSelectedSelectiveTabs();
+    const items = selectedTabs.map(tab => buildTabItem({ ...tab, status: "待看", priority: "P3" }, "SELECTIVE"));
+    const html = buildManagedHtmlFromItems(
+      items,
+      "Tabs Manager Pro Selective Tabs",
+      "tabs_manager_pro_selective"
+    );
+
+    downloadHtml(html, "tabs_manager_pro_selective_tabs");
+    const closedCount = await closeSelectiveTabsAfterAction(selectedTabs);
+    setStatus(
+      "完成：已匯出勾選分頁 HTML，共 " + items.length + " 筆。" +
+      (closedCount ? " 已關閉 " + closedCount + " 個已勾選分頁。" : " ")
+    );
+  } catch (error) {
+    console.error(error);
+    setStatus("失敗：" + error.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function mergeSelectiveTabsWithOldHtml() {
+  const btn = document.getElementById("selectiveMergeBtn");
+  const input = document.getElementById("selectiveMergeFile");
+
+  try {
+    if (!input.files[0]) {
+      throw new Error("請先選擇舊 managed HTML");
+    }
+
+    btn.disabled = true;
+    setStatus("正在讀取舊 HTML 與勾選分頁...");
+
+    const htmlText = await readFile(input.files[0]);
+    const oldGroups = TabOSTemplateManager.parseAnyHtml(htmlText);
+    const selectedTabs = getSelectedSelectiveTabs();
+    const selectedItems = selectedTabs.map(tab => buildTabItem(tab, "SELECTIVE"));
+
+    setStatus("正在把勾選分頁加入舊 HTML，並保留狀態、分類、去重...");
+    const mergedItems = TabOSMergeEngine.mergeOldGroupsWithCurrentTabs(oldGroups, selectedItems);
+    const mergedGroups = TabOSMergeEngine.groupItems(mergedItems);
+
+    const html = TabOSTemplateManager.buildManagedHtml(mergedGroups, {
+      title: "Tabs Manager Pro Selective Merged Tabs",
+      storageKey: "tabs_manager_pro_selective_merged_" + Date.now()
+    });
+
+    downloadHtml(html, "tabs_manager_pro_selective_merged_tabs");
+    const closedCount = await closeSelectiveTabsAfterAction(selectedTabs);
+    setStatus(
+      "完成：已把勾選分頁加入舊 HTML，共 " + selectedItems.length + " 筆。" +
+      (closedCount ? " 已關閉 " + closedCount + " 個已勾選分頁。" : " ")
+    );
+  } catch (error) {
+    console.error(error);
+    setStatus("失敗：" + error.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function convertOldHtml() {
   const btn = document.getElementById("convertBtn");
   const input = document.getElementById("convertFile");
@@ -1049,6 +1393,21 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("mergeActiveTabBtn").addEventListener("click", mergeActiveTabWithOldHtml);
   document.getElementById("manualExportBtn").addEventListener("click", exportManualSingleHtml);
   document.getElementById("manualMergeBtn").addEventListener("click", mergeManualSingleWithOldHtml);
+  document.getElementById("selectiveReloadBtn").addEventListener("click", loadSelectiveTabs);
+  document.getElementById("selectiveFilterInput").addEventListener("input", renderSelectiveTabs);
+  document.getElementById("selectiveTabList").addEventListener("change", handleSelectiveCheckboxChange);
+  document.getElementById("selectiveFilterAllBtn").addEventListener("click", () => setSelectiveMode("all"));
+  document.getElementById("selectiveFilterYoutubeBtn").addEventListener("click", () => setSelectiveMode("youtube"));
+  document.getElementById("selectiveFilterAiBtn").addEventListener("click", () => setSelectiveMode("ai"));
+  document.getElementById("selectiveFilterGithubBtn").addEventListener("click", () => setSelectiveMode("github"));
+  document.getElementById("selectiveFilterCurrentWindowBtn").addEventListener("click", () => setSelectiveMode("currentWindow"));
+  document.getElementById("selectiveFilterPinnedBtn").addEventListener("click", () => setSelectiveMode("pinned"));
+  document.getElementById("selectiveClearFilterBtn").addEventListener("click", clearSelectiveFilter);
+  document.getElementById("selectiveSelectFilteredBtn").addEventListener("click", selectAllFilteredTabs);
+  document.getElementById("selectiveClearSelectedBtn").addEventListener("click", clearSelectiveSelection);
+  document.getElementById("selectiveExportBtn").addEventListener("click", exportSelectiveTabsHtml);
+  document.getElementById("selectiveMergeBtn").addEventListener("click", mergeSelectiveTabsWithOldHtml);
+  loadSelectiveTabs();
   document.getElementById("openCuratedCaptureBtn").addEventListener("click", openCuratedCaptureForActiveTab);
   document.getElementById("exportCuratedBtn").addEventListener("click", exportCuratedHtml);
   document.getElementById("mergeCuratedBtn").addEventListener("click", mergeCuratedWithOldHtml);

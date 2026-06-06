@@ -65,6 +65,8 @@ Tabs + Planner + Weekly Review + Worklog + Trading + Sync + Backup
 - 舊版 `tabs_backup.html` 轉新版 managed HTML
 - 舊 managed HTML + 目前所有分頁合併
 - 單筆加入 HTML
+- 精準選取分頁加入 HTML
+- 可只合併 YouTube、AI、GitHub、目前視窗、Pinned 或手動勾選分頁
 - 手動輸入 URL / title 加入 HTML
 - 自動分類
 - 自動去重
@@ -354,9 +356,9 @@ tabos_full_backup_2026-05-14_after_cleanup.json
 
 注意：這是「目前所有分頁」，不是單筆。
 
-### 3. 單筆加入 HTML
+### 3. 單筆加入 HTML / 精準選取分頁
 
-用途：只加入目前這一頁，或手動輸入一筆 URL。
+用途：只加入目前這一頁、手動輸入一筆 URL，或從目前所有分頁中精準勾選 YouTube / AI / GitHub / 目前視窗 / Pinned 分頁加入 HTML。
 
 #### 3-1. 目前這一頁
 
@@ -383,6 +385,57 @@ tabos_full_backup_2026-05-14_after_cleanup.json
 5. 輸入 tags
 6. 點「手動單筆匯出新 HTML」或「手動單筆加入舊 HTML」
 ```
+
+#### 3-3. 精準選取分頁加入 HTML
+
+用途：處理大量分頁混在一起的情境，例如只想把目前開著的 YouTube 分頁、Gemini / ChatGPT 分頁、GitHub 分頁或手動勾選的幾個網頁加入 HTML。
+
+只合併 YouTube：
+
+```text
+1. 打開 Popup
+2. 到「3-3. 精準選取分頁加入 HTML」
+3. 點「重新讀取目前分頁」
+4. 點「只看 YouTube」
+5. 確認清單只剩 youtube.com / youtu.be 相關分頁
+6. 點「勾選全部符合篩選」或手動勾選要加入的影片頁
+7. 如果匯出 / 合併後要順手關閉這些分頁，勾選「精準匯出 / 合併完成後，關閉已勾選分頁」
+8. 若要單獨產生 HTML，點「只匯出勾選分頁 HTML」
+9. 若要加入舊 HTML，先選舊 managed HTML，再點「把勾選分頁加入舊 HTML 並匯出新版」
+```
+
+只合併特定網域或關鍵字：
+
+```text
+1. 在「關鍵字 / 網域篩選」輸入：youtube.com、gemini、github、IOWN 等
+2. 檢查符合篩選的分頁清單
+3. 勾選需要的項目
+4. 可選擇是否勾選「精準匯出 / 合併完成後，關閉已勾選分頁」
+5. 匯出勾選分頁 HTML，或合併進舊 managed HTML
+```
+
+快速篩選支援：
+
+```text
+- 全部一般分頁
+- 只看 YouTube
+- 只看 AI / ChatGPT / Gemini
+- 只看 GitHub
+- 只看目前視窗
+- 只看 Pinned
+- 關鍵字 / 網域篩選
+- 手動勾選
+- 匯出 / 合併完成後可選擇關閉已勾選分頁
+```
+
+關閉選項：
+
+```text
+勾選「精準匯出 / 合併完成後，關閉已勾選分頁」後，系統會先產生 HTML 或合併新版 HTML，再關閉剛剛勾選的那些原始分頁。
+沒有勾選時，只會匯出 / 合併，不會關閉任何分頁。
+```
+
+注意：精準選取不會直接修改硬碟上的舊 HTML，而是讀舊 HTML → 合併勾選分頁 → 匯出新版 HTML。
 
 ### 4. TabOS 精選層 / 右鍵加入待看
 
@@ -816,6 +869,9 @@ Turn browser tabs into your personal work system.
 
 - Backup all current browser tabs into a managed HTML file
 - Merge old managed HTML with all current browser tabs
+- Selectively export or merge only checked tabs
+- Optionally close selected tabs after export or merge
+- Quickly filter YouTube, AI, GitHub, current-window or pinned tabs
 - Convert legacy `tabs_backup.html` into the latest managed format
 - Add a single active tab into HTML
 - Manually add a single URL and title

@@ -97,6 +97,35 @@
         <input type="file" id="manualMergeFile" accept=".html,.htm" />
         <button id="manualMergeBtn">手動單筆加入舊 HTML 並匯出新版</button>
       </div>
+
+      <div class="sub-block selective-block">
+        <h3>3-3. 精準選取分頁加入 HTML</h3>
+        <p class="hint">適合你目前這種很多分頁混在一起的情境。可只看 YouTube、AI、GitHub、目前視窗或 pinned 分頁，再手動勾選要加入 HTML 的項目。</p>
+        <input type="text" id="selectiveFilterInput" class="text-input" placeholder="關鍵字 / 網域篩選，例如：youtube.com、gemini、github、IOWN" />
+        <div class="quick-grid">
+          <button id="selectiveReloadBtn">重新讀取目前分頁</button>
+          <button id="selectiveFilterAllBtn">全部一般分頁</button>
+          <button id="selectiveFilterYoutubeBtn">只看 YouTube</button>
+          <button id="selectiveFilterAiBtn">只看 AI / ChatGPT / Gemini</button>
+          <button id="selectiveFilterGithubBtn">只看 GitHub</button>
+          <button id="selectiveFilterCurrentWindowBtn">只看目前視窗</button>
+          <button id="selectiveFilterPinnedBtn">只看 Pinned</button>
+          <button id="selectiveClearFilterBtn">清除篩選</button>
+        </div>
+        <div id="selectiveSummary" class="auto-summary">尚未讀取目前分頁。</div>
+        <div id="selectiveTabList" class="selective-list"></div>
+        <div class="inline-grid">
+          <button id="selectiveSelectFilteredBtn">勾選全部符合篩選</button>
+          <button id="selectiveClearSelectedBtn">取消全選</button>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="selectiveCloseAfterAction" />
+          精準匯出 / 合併完成後，關閉已勾選分頁
+        </label>
+        <button id="selectiveExportBtn" class="primary">只匯出勾選分頁 HTML</button>
+        <input type="file" id="selectiveMergeFile" accept=".html,.htm" />
+        <button id="selectiveMergeBtn">把勾選分頁加入舊 HTML 並匯出新版</button>
+      </div>
     </section>
 
     <section>
@@ -139,7 +168,7 @@
     <section>
       <h2>Pro 功能</h2>
       <div class="pro-list">
-        <div>✅ Tabs：備份 / 合併 / 單筆加入 / 去重 / 分類 / 標記</div>
+        <div>✅ Tabs：備份 / 合併 / 精準選取 / 單筆加入 / 去重 / 分類 / 標記</div>
         <div>✅ Curated：右鍵加入精選 / Note / Tags / 匯出 HTML</div>
         <div>✅ Planner：每日任務 / 行程 / Tabs / Worklog</div>
         <div>✅ Weekly Review：每週復盤 / Tab Clean Score / 下週 Top 3</div>
